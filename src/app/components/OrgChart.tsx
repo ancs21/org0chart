@@ -454,22 +454,12 @@ export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
       return null;
     }
     
-    // Filter out any remaining isolated nodes at this level
-    const filteredData = treeState.filter((node: TreeNode) => {
-      // Keep nodes that have children or attributes that mark them as non-isolated
-      return node.children || 
-             (node.attributes?.childCount && parseInt(node.attributes.childCount) > 0) ||
-             (node.attributes?.id === 'root');
-    });
-    
-    // If after filtering we have no data, return null
-    if (filteredData.length === 0) {
-      return null;
-    }
+    // Use all nodes without filtering - remove logic that hides nodes with null parents/children
+    const allData = treeState;
     
     // Single root node case
-    if (filteredData.length === 1) {
-      return filteredData[0];
+    if (allData.length === 1) {
+      return allData[0];
     }
     
     // Multiple root nodes case - create virtual root
@@ -477,10 +467,10 @@ export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
       name: 'Organization', 
       attributes: { 
         id: 'root',
-        childCount: filteredData.length.toString(),
+        childCount: allData.length.toString(),
         collapsed: 'false'
       },
-      children: filteredData 
+      children: allData 
     };
   }, [treeState]);
 

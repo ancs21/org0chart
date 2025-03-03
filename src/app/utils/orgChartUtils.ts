@@ -27,50 +27,29 @@ export function buildTreeFromFlatData(flatData: CSVData[]): OrgChartNode[] {
     };
   });
   
-  // Track which nodes have children
-  const nodesWithChildren = new Set<string>();
-  
-  // First, connect all children to their parents
+  // Connect all children to their parents
   Object.values(nodeMap).forEach(node => {
     // If this node has a parent and that parent exists in our map
     if (node.parentId && nodeMap[node.parentId]) {
       // Add this node as a child of its parent
       nodeMap[node.parentId].children.push(node);
-      // Mark the parent as having children
-      nodesWithChildren.add(node.parentId);
     }
   });
   
-  // Find root nodes (nodes without parents or with non-existent parents)
-  // Filter out nodes with no parent AND no children
+  // Find root nodes (nodes that don't have a parent or have a parent that doesn't exist in our data)
   const rootNodes: OrgChartNode[] = [];
   
   Object.values(nodeMap).forEach(node => {
-    const hasParent = node.parentId && nodeMap[node.parentId];
-    const hasChildren = nodesWithChildren.has(node.id);
-    
-    // Only include the node if:
-    // 1. It has a valid parent (it's a child node), OR
-    // 2. It has children (even if it's a root node), OR
-    // 3. It's an intentional root node (parentId is explicitly null or empty)
-    if (hasParent || hasChildren || node.parentId === null || node.parentId === '') {
-      // If it doesn't have a parent in our data, it's a root node
-      if (!hasParent) {
-        rootNodes.push(node);
-      }
+    // If node has no parent ID or its parent doesn't exist, it's a root node
+    if (!node.parentId || !nodeMap[node.parentId]) {
+      rootNodes.push(node);
     }
-    // Nodes with no parent and no children will be excluded
   });
 
-  // If we have no root nodes but have data, something is wrong with the parent-child relationships
+  // If we have no root nodes but have data, create a default root node
   if (rootNodes.length === 0 && Object.keys(nodeMap).length > 0) {
-    // Find nodes that might be orphaned due to broken parent references
-    // But only include nodes that have children
-    const nodesWithChildrenArray = Object.values(nodeMap).filter(node => 
-      nodesWithChildren.has(node.id)
-    );
-    
-    return nodesWithChildrenArray.length > 0 ? nodesWithChildrenArray : [];
+    // Include all nodes as roots
+    return Object.values(nodeMap);
   }
   
   return rootNodes;
@@ -84,16 +63,8 @@ export function convertToTreeFormat(nodes: OrgChartNode[]): TreeNode[] {
     return [];
   }
   
-  // Filter out nodes that have no parent and no children
-  const filteredNodes = nodes.filter(node => {
-    const hasParent = node.parentId !== null && node.parentId !== '';
-    const hasChildren = node.children && node.children.length > 0;
-    
-    // Keep nodes that have a parent, have children, or are explicitly marked as root nodes
-    return hasParent || hasChildren || node.parentId === null;
-  });
-  
-  return filteredNodes.map(node => ({
+  // No longer filtering out nodes - include all nodes regardless of parent/child status
+  return nodes.map(node => ({
     name: node.name || 'Unnamed',
     attributes: {
       id: node.id,
