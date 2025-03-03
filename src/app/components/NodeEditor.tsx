@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import Fuse from 'fuse.js';
 import { OrgChartNode } from '../types';
 import { generateId } from '../utils/orgChartUtils';
 
@@ -30,69 +31,7 @@ export default function NodeEditor({
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchText, setSearchText] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Initialize form when node changes
-  useEffect(() => {
-    if (node) {
-      // Make sure to explicitly set parentId, even if it's null
-      console.log('Initializing editor with node:', node);
-      setEditedNode({
-        ...node,
-        parentId: node.parentId
-      });
-      
-      // Set the search text to the parent name if there is a parent
-      if (node.parentId) {
-        const parentNode = allNodes.find(n => n.id === node.parentId);
-        if (parentNode) {
-          setSearchText(parentNode.name);
-        }
-      } else {
-        setSearchText('');
-      }
-    } else if (isNew) {
-      setEditedNode({
-        id: generateId(),
-        name: '',
-        title: '',
-        department: '',
-        parentId: null,
-        imageUrl: ''
-      });
-      setSearchText('');
-    }
-  }, [node, isNew, allNodes]);
-
-  // Handle click outside to close dropdown
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowDropdown(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    if (name === 'parentId') {
-      console.log('Parent ID changed to:', value === '' ? null : value);
-    }
-    setEditedNode(prev => ({
-      ...prev,
-      [name]: value === '' && name === 'parentId' ? null : value
-    }));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(editedNode);
-  };
-
+  
   // Get all possible parent nodes (excluding self and descendants)
   const getPossibleParents = () => {
     // Simple function to check if nodeId is a descendant of the current node
@@ -127,6 +66,86 @@ export default function NodeEditor({
       
       return true;
     });
+  };
+  
+  // Create Fuse instance for fuzzy search
+  const possibleParents = useMemo(() => getPossibleParents(), [allNodes, node, isNew]);
+  
+  const fuse = useMemo(() => {
+    return new Fuse(possibleParents, {
+      keys: ['name', 'title', 'department'],
+      threshold: 0.3,
+      includeScore: true,
+      shouldSort: true
+    });
+  }, [possibleParents]);
+  
+  // Get search results
+  const searchResults = useMemo(() => {
+    if (!searchText) return possibleParents;
+    return fuse.search(searchText).map(result => result.item);
+  }, [fuse, searchText, possibleParents]);
+
+  // Initialize form when node changes
+  useEffect(() => {
+    if (node) {
+      // Make sure to explicitly set parentId, even if it's null
+      console.log('Initializing editor with node:', node);
+      setEditedNode({
+        ...node,
+        parentId: node.parentId
+      });
+      
+      // Set the search text to the parent name if there is a parent
+      if (node.parentId) {
+        const parentNode = allNodes.find(n => n.id === node.parentId);
+        if (parentNode) {
+          setSearchText(parentNode.name);
+        }
+      } else {
+        setSearchText('');
+      }
+    } else if (isNew) {
+      setEditedNode({
+        id: generateId(),
+        name: '',
+        title: '',
+        department: '',
+        parentId: null,
+        imageUrl: ''
+      });
+      setSearchText('');
+    }
+  }, [node, isNew, allNodes]);
+ 
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    if (name === 'parentId') {
+      console.log('Parent ID changed to:', value === '' ? null : value);
+    }
+    setEditedNode(prev => ({
+      ...prev,
+      [name]: value === '' && name === 'parentId' ? null : value
+    }));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(editedNode);
   };
 
   if (!node && !isNew) return null;
@@ -214,13 +233,8 @@ export default function NodeEditor({
               <input
                 type="text"
                 placeholder="Search for a parent..."
-                value={
-                  editedNode.parentId 
-                    ? allNodes.find(n => n.id === editedNode.parentId)?.name || ''
-                    : ''
-                }
+                value={searchText}
                 onChange={(e) => {
-                  // This only updates the search text, not the actual parentId
                   setSearchText(e.target.value);
                   setShowDropdown(true);
                 }}
@@ -234,7 +248,9 @@ export default function NodeEditor({
                   ref={dropdownRef}
                 >
                   <div 
-                    className="cursor-pointer hover:bg-gray-100 py-2 px-3"
+                    className={`cursor-pointer hover:bg-gray-100 py-2 px-3 ${
+                      editedNode.parentId === null ? 'bg-blue-100' : ''
+                    }`}
                     onClick={() => {
                       handleChange({
                         target: { name: 'parentId', value: '' }
@@ -246,28 +262,35 @@ export default function NodeEditor({
                     No Parent (Root Node)
                   </div>
                   
-                  {getPossibleParents()
-                    .filter(parent => 
-                      parent.name.toLowerCase().includes(searchText.toLowerCase())
-                    )
-                    .map(parent => (
-                      <div 
-                        key={parent.id} 
-                        className={`cursor-pointer hover:bg-gray-100 py-2 px-3 ${
-                          parent.id === editedNode.parentId ? 'bg-blue-100' : ''
-                        }`}
-                        onClick={() => {
-                          handleChange({
-                            target: { name: 'parentId', value: parent.id }
-                          } as React.ChangeEvent<HTMLSelectElement>);
-                          setShowDropdown(false);
-                          setSearchText(parent.name);
-                        }}
-                      >
-                        {parent.name}
-                      </div>
-                    ))
-                  }
+                  {searchResults.map(parent => (
+                    <div 
+                      key={parent.id} 
+                      className={`cursor-pointer hover:bg-gray-100 py-2 px-3 ${
+                        parent.id === editedNode.parentId ? 'bg-blue-100' : ''
+                      }`}
+                      onClick={() => {
+                        handleChange({
+                          target: { name: 'parentId', value: parent.id }
+                        } as React.ChangeEvent<HTMLSelectElement>);
+                        setShowDropdown(false);
+                        setSearchText(parent.name);
+                      }}
+                    >
+                      <div className="font-medium">{parent.name}</div>
+                      {parent.title && (
+                        <div className="text-xs text-gray-500">{parent.title}</div>
+                      )}
+                      {parent.department && (
+                        <div className="text-xs text-gray-400">{parent.department}</div>
+                      )}
+                    </div>
+                  ))}
+                  
+                  {searchText && searchResults.length === 0 && (
+                    <div className="py-2 px-3 text-gray-500 italic">
+                      No matching parents found
+                    </div>
+                  )}
                 </div>
               )}
             </div>
