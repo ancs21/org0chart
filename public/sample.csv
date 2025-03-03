@@ -1,0 +1,13 @@
+id,name,title,department,parentId,imageUrl
+1,John Doe,CEO,Executive,,https://randomuser.me/api/portraits/men/1.jpg
+2,Jane Smith,CTO,Technology,1,https://randomuser.me/api/portraits/women/1.jpg
+3,Michael Johnson,CFO,Finance,1,https://randomuser.me/api/portraits/men/2.jpg
+4,Sarah Williams,CMO,Marketing,1,https://randomuser.me/api/portraits/women/2.jpg
+5,David Brown,VP Engineering,Technology,2,https://randomuser.me/api/portraits/men/3.jpg
+6,Emily Davis,VP Finance,Finance,3,https://randomuser.me/api/portraits/women/3.jpg
+7,Robert Wilson,VP Marketing,Marketing,4,https://randomuser.me/api/portraits/men/4.jpg
+8,Jennifer Garcia,Senior Engineer,Technology,5,https://randomuser.me/api/portraits/women/4.jpg
+9,Thomas Anderson,UX Designer,Technology,5,https://randomuser.me/api/portraits/men/5.jpg
+10,Amanda Martinez,Financial Analyst,Finance,6,https://randomuser.me/api/portraits/women/5.jpg
+11,James Taylor,Marketing Specialist,Marketing,7,https://randomuser.me/api/portraits/men/6.jpg
+12,Jessica Rodriguez,Software Engineer,Technology,8,https://randomuser.me/api/portraits/women/6.jpg 
