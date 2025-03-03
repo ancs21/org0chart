@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { OrgChartNode } from '../types';
 import { generateId } from '../utils/orgChartUtils';
 
@@ -27,11 +27,29 @@ export default function NodeEditor({
     parentId: null,
     imageUrl: ''
   });
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Initialize form when node changes
   useEffect(() => {
     if (node) {
-      setEditedNode({ ...node });
+      // Make sure to explicitly set parentId, even if it's null
+      console.log('Initializing editor with node:', node);
+      setEditedNode({
+        ...node,
+        parentId: node.parentId
+      });
+      
+      // Set the search text to the parent name if there is a parent
+      if (node.parentId) {
+        const parentNode = allNodes.find(n => n.id === node.parentId);
+        if (parentNode) {
+          setSearchText(parentNode.name);
+        }
+      } else {
+        setSearchText('');
+      }
     } else if (isNew) {
       setEditedNode({
         id: generateId(),
@@ -41,11 +59,29 @@ export default function NodeEditor({
         parentId: null,
         imageUrl: ''
       });
+      setSearchText('');
     }
-  }, [node, isNew]);
+  }, [node, isNew, allNodes]);
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    if (name === 'parentId') {
+      console.log('Parent ID changed to:', value === '' ? null : value);
+    }
     setEditedNode(prev => ({
       ...prev,
       [name]: value === '' && name === 'parentId' ? null : value
@@ -70,11 +106,27 @@ export default function NodeEditor({
       return false;
     };
 
-    return allNodes.filter(n => 
-      !isNew && node 
-        ? n.id !== node.id && !isDescendant(n.id, node.id)
-        : true
-    );
+    return allNodes.filter(n => {
+      // If we're creating a new node, include all nodes
+      if (isNew) return true;
+      
+      // If we're editing an existing node:
+      if (node) {
+        // Don't include the node itself
+        if (n.id === node.id) return false;
+        
+        // Don't include descendants of the node
+        if (isDescendant(n.id, node.id)) return false;
+        
+        // Always include the current parent of the node
+        if (node.parentId === n.id) return true;
+        
+        // Include all other nodes
+        return true;
+      }
+      
+      return true;
+    });
   };
 
   if (!node && !isNew) return null;
@@ -158,19 +210,67 @@ export default function NodeEditor({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Parent
             </label>
-            <select
-              name="parentId"
-              value={editedNode.parentId || ''}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            >
-              <option value="">No Parent (Root Node)</option>
-              {getPossibleParents().map(parent => (
-                <option key={parent.id} value={parent.id}>
-                  {parent.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search for a parent..."
+                value={
+                  editedNode.parentId 
+                    ? allNodes.find(n => n.id === editedNode.parentId)?.name || ''
+                    : ''
+                }
+                onChange={(e) => {
+                  // This only updates the search text, not the actual parentId
+                  setSearchText(e.target.value);
+                  setShowDropdown(true);
+                }}
+                onClick={() => setShowDropdown(true)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+              {showDropdown && (
+                <div 
+                  className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base overflow-auto focus:outline-none sm:text-sm"
+                  style={{ maxHeight: '200px', overflowY: 'auto' }}
+                  ref={dropdownRef}
+                >
+                  <div 
+                    className="cursor-pointer hover:bg-gray-100 py-2 px-3"
+                    onClick={() => {
+                      handleChange({
+                        target: { name: 'parentId', value: '' }
+                      } as React.ChangeEvent<HTMLSelectElement>);
+                      setShowDropdown(false);
+                      setSearchText('');
+                    }}
+                  >
+                    No Parent (Root Node)
+                  </div>
+                  
+                  {getPossibleParents()
+                    .filter(parent => 
+                      parent.name.toLowerCase().includes(searchText.toLowerCase())
+                    )
+                    .map(parent => (
+                      <div 
+                        key={parent.id} 
+                        className={`cursor-pointer hover:bg-gray-100 py-2 px-3 ${
+                          parent.id === editedNode.parentId ? 'bg-blue-100' : ''
+                        }`}
+                        onClick={() => {
+                          handleChange({
+                            target: { name: 'parentId', value: parent.id }
+                          } as React.ChangeEvent<HTMLSelectElement>);
+                          setShowDropdown(false);
+                          setSearchText(parent.name);
+                        }}
+                      >
+                        {parent.name}
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+            </div>
           </div>
           
           <div className="flex justify-between">

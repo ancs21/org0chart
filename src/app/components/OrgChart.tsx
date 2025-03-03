@@ -22,11 +22,13 @@ interface NodeDatum {
 const renderNodeWithCustomEvents = ({
   nodeDatum,
   onNodeClick,
-  toggleNode
+  toggleNode,
+  onExplainChildren
 }: {
   nodeDatum: NodeDatum;
   onNodeClick: (nodeData: NodeDatum) => void;
   toggleNode: () => void;
+  onExplainChildren: (nodeData: NodeDatum) => void;
 }) => {
   const childCount = nodeDatum.attributes?.childCount ? parseInt(nodeDatum.attributes.childCount) : 0;
   const isCollapsed = nodeDatum.attributes?.collapsed === 'true';
@@ -207,6 +209,27 @@ const renderNodeWithCustomEvents = ({
                 >
                   {isCollapsed ? '▼' : '▲'}
                 </div>
+                <div 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onExplainChildren(nodeDatum);
+                  }}
+                  style={{
+                    position: 'absolute',
+                    left: '10px',
+                    width: '20px',
+                    height: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: '#666',
+                    fontSize: '12px'
+                  }}
+                  title="Explain Children"
+                >
+                  ℹ️
+                </div>
               </>
             )}
           </div>
@@ -225,6 +248,11 @@ export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
   const treeContainerRef = useRef<HTMLDivElement>(null);
   const [translate, setTranslate] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [explanationContent, setExplanationContent] = useState<{title: string, content: string}>({
+    title: '',
+    content: ''
+  });
 
   // Calculate dimensions and initial position
   useEffect(() => {
@@ -294,6 +322,52 @@ export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
     }
   };
 
+  // Handle explain children button click
+  const handleExplainChildren = (nodeData: NodeDatum) => {
+    // Get the children of this node
+    const children = nodeData.children || [];
+    const childCount = children.length;
+    
+    if (childCount === 0) {
+      setExplanationContent({
+        title: `${nodeData.name}'s Team`,
+        content: `${nodeData.name} doesn't have any direct reports.`
+      });
+    } else {
+      // Create a summary of the children
+      const childrenSummary = children.map(child => {
+        const title = child.attributes?.title || 'No title';
+        return `${child.name} (${title})`;
+      }).join('\n• ');
+      
+      // Create department grouping if available
+      const departmentGroups: Record<string, string[]> = {};
+      children.forEach(child => {
+        const dept = child.attributes?.department || 'Other';
+        if (!departmentGroups[dept]) {
+          departmentGroups[dept] = [];
+        }
+        departmentGroups[dept].push(`${child.name} (${child.attributes?.title || 'No title'})`);
+      });
+      
+      // Format department summary
+      let deptSummary = '';
+      if (Object.keys(departmentGroups).length > 1) {
+        deptSummary = '\n\nTeam by Department:\n';
+        Object.entries(departmentGroups).forEach(([dept, members]) => {
+          deptSummary += `\n${dept}:\n• ${members.join('\n• ')}`;
+        });
+      }
+      
+      setExplanationContent({
+        title: `${nodeData.name}'s Team`,
+        content: `${nodeData.name} has ${childCount} direct report${childCount > 1 ? 's' : ''}:\n\n• ${childrenSummary}${deptSummary}`
+      });
+    }
+    
+    setShowExplanation(true);
+  };
+
   // Prepare the tree data structure
   const treeData = React.useMemo(() => {
     // No data case
@@ -334,7 +408,7 @@ export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
   return (
     <div 
       ref={treeContainerRef} 
-      className="w-full h-[650px] border border-gray-200 rounded-lg overflow-hidden bg-slate-50"
+      className="w-full h-[650px] border border-gray-200 rounded-lg overflow-hidden bg-slate-50 relative"
     >
       {dimensions.width > 0 && dimensions.height > 0 && treeData && (
         <Tree
@@ -346,7 +420,8 @@ export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
             renderNodeWithCustomEvents({
               nodeDatum: rd3tProps.nodeDatum as unknown as NodeDatum,
               onNodeClick: (nodeData: NodeDatum) => handleNodeClick(nodeData),
-              toggleNode: rd3tProps.toggleNode
+              toggleNode: rd3tProps.toggleNode,
+              onExplainChildren: handleExplainChildren
             })
           }
           separation={{ siblings: 1.1, nonSiblings: 1.5 }}
@@ -358,6 +433,30 @@ export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
           branchNodeClassName="org-tree-branch"
           leafNodeClassName="org-tree-leaf"
         />
+      )}
+      
+      {/* Explanation Modal */}
+      {showExplanation && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={() => setShowExplanation(false)}
+        >
+          <div 
+            className="bg-white rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold mb-4">{explanationContent.title}</h3>
+            <div className="whitespace-pre-line">{explanationContent.content}</div>
+            <div className="mt-6 flex justify-end">
+              <button 
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                onClick={() => setShowExplanation(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       
       <style jsx global>{`

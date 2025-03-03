@@ -56,6 +56,8 @@ export default function Home() {
 
   // Handle node save
   const handleSaveNode = (node: OrgChartNode) => {
+    console.log('Saving node:', node);
+    
     if (isNewNode) {
       // Add new node
       if (node.parentId) {
@@ -96,20 +98,105 @@ export default function Home() {
       }
     } else {
       // Update existing node
-      // Helper function to update nodes recursively
-      const updateNode = (nodes: OrgChartNode[], updatedNode: OrgChartNode): OrgChartNode[] => {
-        return nodes.map(n => {
-          if (n.id === updatedNode.id) {
-            return { ...updatedNode, children: n.children };
-          }
-          if (n.children) {
-            return { ...n, children: updateNode(n.children, updatedNode) };
-          }
-          return n;
-        });
-      };
+      // First, check if the parent has changed
+      const originalNode = selectedNode;
+      console.log('Original node:', originalNode);
+      console.log('New parent ID:', node.parentId);
+      console.log('Original parent ID:', originalNode?.parentId);
       
-      setOrgNodes(updateNode(orgNodes, node));
+      const parentChanged = originalNode?.parentId !== node.parentId;
+      console.log('Parent changed:', parentChanged);
+      
+      if (parentChanged) {
+        // We need to remove the node from its current parent and add it to the new parent
+        
+        // First, create a deep copy of the org nodes
+        let updatedNodes = JSON.parse(JSON.stringify(orgNodes));
+        
+        // Helper function to remove a node from the tree
+        const removeNodeFromTree = (nodes: OrgChartNode[], nodeId: string): OrgChartNode[] => {
+          return nodes.map(n => {
+            if (n.children) {
+              n.children = n.children.filter(child => child.id !== nodeId);
+              if (n.children.length === 0) {
+                n.children = undefined;
+              } else {
+                n.children = removeNodeFromTree(n.children, nodeId);
+              }
+            }
+            return n;
+          });
+        };
+        
+        // Remove the node from its current location
+        updatedNodes = removeNodeFromTree(updatedNodes, node.id);
+        
+        // If the node has a new parent, add it to that parent
+        if (node.parentId) {
+          // Helper function to find and update a node in the tree
+          const addNodeToParent = (nodes: OrgChartNode[], parentId: string, nodeToAdd: OrgChartNode): boolean => {
+            for (let i = 0; i < nodes.length; i++) {
+              // Check if this is the parent node
+              if (nodes[i].id === parentId) {
+                // Initialize children array if it doesn't exist
+                if (!nodes[i].children) {
+                  nodes[i].children = [];
+                }
+                // Add the node to the parent's children
+                nodes[i].children.push({
+                  ...nodeToAdd,
+                  children: originalNode?.children
+                });
+                return true;
+              }
+              
+              // If this node has children, recursively search them
+              if (nodes[i].children && nodes[i].children.length > 0) {
+                const childResult = addNodeToParent(nodes[i].children, parentId, nodeToAdd);
+                if (childResult) {
+                  return true;
+                }
+              }
+            }
+            return false;
+          };
+          
+          const added = addNodeToParent(updatedNodes, node.parentId, node);
+          console.log('Node added to new parent:', added);
+          
+          if (!added) {
+            // If we couldn't add it to a parent (shouldn't happen), add it as a root node
+            updatedNodes.push({
+              ...node,
+              children: originalNode?.children
+            });
+          }
+        } else {
+          // If the node now has no parent, add it as a root node
+          updatedNodes.push({
+            ...node,
+            children: originalNode?.children
+          });
+        }
+        
+        setOrgNodes(updatedNodes);
+      } else {
+        // Parent hasn't changed, just update the node properties
+        // Helper function to update nodes recursively
+        const updateNode = (nodes: OrgChartNode[], updatedNode: OrgChartNode): OrgChartNode[] => {
+          return nodes.map(n => {
+            if (n.id === updatedNode.id) {
+              return { ...updatedNode, children: n.children };
+            }
+            if (n.children) {
+              return { ...n, children: updateNode(n.children, updatedNode) };
+            }
+            return n;
+          });
+        };
+        
+        setOrgNodes(updateNode(orgNodes, node));
+      }
     }
     
     setShowEditor(false);
