@@ -1,5 +1,8 @@
 # Organization Chart Editor
 
+<img width="1557" alt="image" src="https://github.com/user-attachments/assets/1ed2cc1d-90b0-482e-83b2-23a547bd44eb" />
+
+
 A web application for importing, visualizing, editing, and exporting organizational chart data. This tool allows you to:
 
 - Import organization data from CSV files
