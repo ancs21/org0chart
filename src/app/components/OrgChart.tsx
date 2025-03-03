@@ -52,9 +52,9 @@ const renderNodeWithCustomEvents = ({
       {/* Main node card */}
       <foreignObject
         width={220}
-        height={140}
+        height={170}
         x={-110}
-        y={-70}
+        y={-85}
         className="node-container"
       >
         <div 
@@ -106,7 +106,7 @@ const renderNodeWithCustomEvents = ({
           <div style={{ 
             display: 'flex', 
             justifyContent: 'center', 
-            marginTop: '10px',
+            marginTop: '15px',
             position: 'relative'
           }}>
             {imageUrl ? (
@@ -145,7 +145,7 @@ const renderNodeWithCustomEvents = ({
           {/* Name and Title */}
           <div style={{ 
             textAlign: 'center', 
-            padding: '8px 10px 0',
+            padding: '10px 10px 0',
             flexGrow: 1,
             display: 'flex',
             flexDirection: 'column'
@@ -183,12 +183,20 @@ const renderNodeWithCustomEvents = ({
             padding: '5px 0',
             position: 'relative',
             borderTop: '1px solid #f0f0f0',
-            marginTop: 'auto'
+            marginTop: 'auto',
+            minHeight: '28px'
           }}>
             {childCount > 0 && (
               <>
-                <div style={{ fontSize: '12px', color: '#666' }}>
-                  {childCount}
+                <div style={{ 
+                  fontSize: '12px', 
+                  color: '#666',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  <span>{childCount}</span>
+                  <span>{childCount === 1 ? 'Direct Report' : 'Direct Reports'}</span>
                 </div>
                 <div 
                   onClick={(e) => {
@@ -246,36 +254,107 @@ interface OrgChartProps {
 
 export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
   const treeContainerRef = useRef<HTMLDivElement>(null);
-  const [translate, setTranslate] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [translate, setTranslate] = useState<{ x: number; y: number }>({ x: 100, y: 50 });
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [showExplanation, setShowExplanation] = useState(false);
   const [explanationContent, setExplanationContent] = useState<{title: string, content: string}>({
     title: '',
     content: ''
   });
+  const [treeState, setTreeState] = useState<TreeNode[]>([]);
+  const [zoom, setZoom] = useState<number>(0.7);
 
-  // Calculate dimensions and initial position
+  // Initialize tree state from data with collapsed non-top-level nodes
+  useEffect(() => {
+    // Deep copy the data
+    const processedData = JSON.parse(JSON.stringify(data));
+    
+    // Collapse all non-top-level nodes
+    const collapseNonTopLevel = (nodes: TreeNode[], level: number = 0): TreeNode[] => {
+      return nodes.map(node => {
+        // Deep copy the node
+        const newNode = { ...node };
+        
+        // For nodes below top level (level > 1), set collapsed to true
+        if (level > 0) {
+          if (!newNode.attributes) {
+            newNode.attributes = {};
+          }
+          newNode.attributes.collapsed = 'true';
+        }
+        
+        // Process children recursively
+        if (newNode.children && newNode.children.length > 0) {
+          newNode.children = collapseNonTopLevel(newNode.children, level + 1);
+        }
+        
+        return newNode;
+      });
+    };
+    
+    setTreeState(collapseNonTopLevel(processedData));
+  }, [data]);
+
+  // Calculate dimensions only (without auto-centering)
   useEffect(() => {
     if (treeContainerRef.current) {
       const { width, height } = treeContainerRef.current.getBoundingClientRect();
       setDimensions({ width, height });
-      setTranslate({ x: width / 2, y: height / 6 });
     }
-  }, [data]); // Recalculate when data changes
+  }, [treeState]);
 
-  // Handle window resize
+  // Handle window resize (dimensions only, not position)
   useEffect(() => {
     const handleResize = () => {
       if (treeContainerRef.current) {
         const { width, height } = treeContainerRef.current.getBoundingClientRect();
         setDimensions({ width, height });
-        setTranslate({ x: width / 2, y: height / 6 });
       }
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Handle panning with mouse drag
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only initiate drag if not clicking on a node
+    if ((e.target as HTMLElement).closest('.node-container')) {
+      return;
+    }
+    setIsDragging(true);
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    
+    setTranslate(prev => ({
+      x: prev.x + dx,
+      y: prev.y + dy
+    }));
+    
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Handle zoom with buttons
+  const handleZoomIn = () => {
+    setZoom(prev => Math.min(prev + 0.1, 2));
+  };
+
+  const handleZoomOut = () => {
+    setZoom(prev => Math.max(prev - 0.1, 0.3));
+  };
 
   // Handle node click and pass back the original node data
   const handleNodeClick = (nodeData: NodeDatum) => {
@@ -315,7 +394,7 @@ export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
     
     const id = nodeData.attributes?.id;
     if (id) {
-      const originalNode = findNodeById(data, id);
+      const originalNode = findNodeById(treeState, id);
       if (originalNode) {
         onNodeClick(originalNode);
       }
@@ -326,7 +405,7 @@ export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
   const handleExplainChildren = (nodeData: NodeDatum) => {
     // Get the children of this node
     const children = nodeData.children || [];
-    const childCount = children.length;
+    const childCount = nodeData.attributes?.childCount ? parseInt(nodeData.attributes.childCount) : 0;
     
     if (childCount === 0) {
       setExplanationContent({
@@ -371,12 +450,12 @@ export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
   // Prepare the tree data structure
   const treeData = React.useMemo(() => {
     // No data case
-    if (!data || data.length === 0) {
+    if (!treeState || treeState.length === 0) {
       return null;
     }
     
     // Filter out any remaining isolated nodes at this level
-    const filteredData = data.filter(node => {
+    const filteredData = treeState.filter((node: TreeNode) => {
       // Keep nodes that have children or attributes that mark them as non-isolated
       return node.children || 
              (node.attributes?.childCount && parseInt(node.attributes.childCount) > 0) ||
@@ -403,13 +482,41 @@ export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
       },
       children: filteredData 
     };
-  }, [data]);
+  }, [treeState]);
 
   return (
     <div 
       ref={treeContainerRef} 
       className="w-full h-[650px] border border-gray-200 rounded-lg overflow-hidden bg-slate-50 relative"
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
     >
+      {/* Zoom controls */}
+      <div className="absolute top-4 right-4 flex flex-col space-y-2 z-10">
+        <button
+          className="bg-white p-2 rounded-full shadow-md text-gray-700 hover:bg-gray-100"
+          onClick={handleZoomIn}
+          title="Zoom In"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        <button
+          className="bg-white p-2 rounded-full shadow-md text-gray-700 hover:bg-gray-100"
+          onClick={handleZoomOut}
+          title="Zoom Out"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+
       {dimensions.width > 0 && dimensions.height > 0 && treeData && (
         <Tree
           data={treeData}
@@ -425,13 +532,14 @@ export default function OrgChart({ data, onNodeClick }: OrgChartProps) {
             })
           }
           separation={{ siblings: 1.1, nonSiblings: 1.5 }}
-          zoom={0.7}
+          zoom={zoom}
           dimensions={{ width: dimensions.width, height: dimensions.height }}
-          nodeSize={{ x: 240, y: 180 }}
+          nodeSize={{ x: 240, y: 220 }}
           pathClassFunc={() => 'org-tree-path'}
           rootNodeClassName="org-tree-root"
           branchNodeClassName="org-tree-branch"
           leafNodeClassName="org-tree-leaf"
+          enableLegacyTransitions={false}
         />
       )}
       
